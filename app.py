@@ -1,6 +1,6 @@
 # app.py
 # ============================
-# ACA-1095 Builder — Streamlit App (with simple login)
+# ACA-1095 Builder — Streamlit App (with simple login + Line 15 + Part III)
 # ============================
 
 import io
@@ -16,7 +16,7 @@ from PyPDF2.generic import NameObject, BooleanObject, DictionaryObject
 from reportlab.pdfgen import canvas
 
 # ----------------------------
-# Page config (must be the first Streamlit call)
+# Page config (must be first Streamlit call)
 # ----------------------------
 st.set_page_config(page_title="ACA-1095 Builder", layout="wide")
 
@@ -37,7 +37,7 @@ def login_screen():
     st.title("🔐 ACA-1095 Builder - Login")
     u = st.text_input("Username")
     p = st.text_input("Password", type="password")
-    if st.button("Login"):
+    if st.button("Login", type="primary", use_container_width=True):
         if u in USERS and USERS[u] == p:
             st.session_state.logged_in = True
             st.session_state.username = u
@@ -74,7 +74,7 @@ EXPECTED_SHEETS = {
     "emp status": ["employeeid","employmentstatus","role","statusstartdate","statusenddate"],
     "emp eligibility": ["employeeid","iseligibleforcoverage","minimumvaluecoverage","eligibilitystartdate","eligibilityenddate"],
     "emp enrollment": ["employeeid","isenrolled","enrollmentstartdate","enrollmentenddate"],
-    "dep enrollment": ["employeeid","dependentrelationship","eligible","enrolled","eligiblestartdate","eligibleenddate"],
+    "dep enrollment": ["employeeid","dependentrelationship","eligible","enrolled","eligiblestartdate","eligibleenddate","firstname","lastname","mi","ssn","dob"],
     "pay deductions": ["employeeid","amount","startdate","enddate"]
 }
 CANON_ALIASES = {
@@ -207,9 +207,11 @@ def prepare_inputs(data: dict):
             if "dependentrelationship" in df.columns:
                 df["dependentrelationship"] = df["dependentrelationship"].astype(str).str.strip().str.title()
             df = _boolify(df, ["eligible","enrolled"])
-            df = _parse_date_cols(df, ["eligiblestartdate","eligibleenddate"], default_end_cols=["eligibleenddate"])
+            df = _parse_date_cols(df, ["eligiblestartdate","eligibleenddate","dob"], default_end_cols=["eligibleenddate"])
         elif sheet == "pay deductions":
             df = _parse_date_cols(df, ["startdate","enddate"], default_end_cols=["enddate"])
+            if "amount" in df.columns:
+                df["amount"] = pd.to_numeric(df["amount"], errors="coerce")
         cleaned[sheet] = df
     return (cleaned["emp demographic"], cleaned["emp status"], cleaned["emp eligibility"],
             cleaned["emp enrollment"], cleaned["dep enrollment"], cleaned["pay deductions"])
@@ -330,7 +332,7 @@ def build_final(interim: pd.DataFrame) -> pd.DataFrame:
     return out.reset_index(drop=True)
 
 # =========================
-# PDF helpers (Part I + Part II)
+# PDF helpers (Part I + II + III)
 # =========================
 def normalize_ssn_digits(ssn: str) -> str:
     d = "".join(ch for ch in str(ssn) if str(ch).isdigit())
@@ -339,12 +341,46 @@ def normalize_ssn_digits(ssn: str) -> str:
 # IRS 1095-C 2024 field names (page 1):
 # Part I
 F_PART1 = ["f1_1[0]","f1_2[0]","f1_3[0]","f1_4[0]","f1_5[0]","f1_6[0]","f1_7[0]","f1_8[0]"]
-# Part II Line 14 (All 12 + Jan..Dec)
+# Line 14 (All 12 + Jan..Dec)
 F_L14 = ["f1_17[0]","f1_18[0]","f1_19[0]","f1_20[0]","f1_21[0]","f1_22[0]","f1_23[0]",
          "f1_24[0]","f1_25[0]","f1_26[0]","f1_27[0]","f1_28[0]","f1_29[0]"]
-# Part II Line 16 (All 12 + Jan..Dec)
+# Line 16 (All 12 + Jan..Dec)
 F_L16 = ["f1_43[0]","f1_44[0]","f1_45[0]","f1_46[0]","f1_47[0]","f1_48[0]","f1_49[0]",
          "f1_50[0]","f1_51[0]","f1_52[0]","f1_53[0]","f1_54[0]","f1_55[0]"]
+# NEW: Line 15 (All 12 + Jan..Dec) — adjust if your PDF uses different ids
+F_L15 = [f"f1_{i}[0]" for i in range(30, 43)]  # f1_30 .. f1_42
+
+# ---- Part III (Page 3): name fields & checkboxes
+# Each row: [First, MI, Last, SSN/TIN, DOB]
+P3_NAME_ROWS = [
+    ["f3_61[0]","f3_62[0]","f3_63[0]","f3_64[0]","f3_65[0]"],   # row 18
+    ["f3_66[0]","f3_67[0]","f3_68[0]","f3_69[0]","f3_70[0]"],   # row 19
+    ["f3_71[0]","f3_72[0]","f3_73[0]","f3_74[0]","f3_75[0]"],   # row 20
+    ["f3_76[0]","f3_77[0]","f3_78[0]","f3_79[0]","f3_80[0]"],   # row 21
+    ["f3_81[0]","f3_82[0]","f3_83[0]","f3_84[0]","f3_85[0]"],   # row 22
+    ["f3_91[0]","f3_92[0]","f3_93[0]","f3_95[0]","f3_96[0]"],   # row 23
+    ["f3_97[0]","f3_98[0]","f3_99[0]","f3_100[0]","f3_101[0]"], # row 24
+    ["f3_102[0]","f3_103[0]","f3_104[0]","f3_105[0]","f3_106[0]"], # row 25
+    ["f3_107[0]","f3_108[0]","f3_109[0]","f3_110[0]","f3_111[0]"], # row 26
+    ["f3_113[0]","f3_114[0]","f3_115[0]","f3_116[0]","f3_117[0]"], # row 27
+    ["f3_118[0]","f3_119[0]","f3_120[0]","f3_121[0]","f3_122[0]"], # row 28
+    # extend for rows 29–30 if needed
+]
+
+def _seq(a,b): return [f"c3_{i}" for i in range(a,b+1)]
+P3_CHECK_ROWS = [
+    _seq(16, 28),   # row 18: [All 12, Jan..Dec] (13 boxes)
+    _seq(29, 41),   # row 19
+    _seq(42, 54),   # row 20
+    _seq(55, 67),   # row 21
+    _seq(68, 80),   # row 22
+    _seq(81, 93),   # row 23
+    _seq(94, 106),  # row 24
+    _seq(107,119),  # row 25
+    _seq(120,132),  # row 26
+    _seq(133,145),  # row 27
+    _seq(146,158),  # row 28
+]
 
 def set_need_appearances(writer: PdfWriter):
     root = writer._root_object
@@ -409,15 +445,135 @@ def flatten_pdf(reader: PdfReader):
         del out._root_object[NameObject("/AcroForm")]
     return out
 
-def fill_pdf_for_employee(pdf_bytes: bytes, emp_row: pd.Series, final_df_emp: pd.DataFrame, year_used: int):
+# ======== Line 15 + Part III helpers ========
+L15_REQUIRED_CODES = {"1B","1C","1D","1E","1J","1K","1L","1M","1N","1O","1P","1Q","1T","1U"}
+
+def _fmt_money(x):
+    if x in (None, "", np.nan): return ""
+    try: return f"{float(x):.2f}"
+    except: return ""
+
+def _overlaps_month(s, e, y, m):
+    ms, me = month_bounds(y, m)
+    s = pd.to_datetime(s, errors="coerce"); e = pd.to_datetime(e, errors="coerce")
+    if pd.isna(s) and pd.isna(e): return False
+    s = s if not pd.isna(s) else pd.Timestamp.min
+    e = e if not pd.isna(e) else pd.Timestamp.max
+    return (e.date() >= ms) and (s.date() <= me)
+
+def compute_l15_for_employee(emp_id: str, year_used: int, final_emp_df: pd.DataFrame, pay_ded_df: pd.DataFrame) -> dict:
+    """
+    Returns {"Jan":"12.34", ..., "Dec":"", "ALL": ""}.
+    Uses pay_deductions.amount as EE self-only cost for months overlapping start/end.
+    If Line 14 needs an amount but none exists, uses "0.00".
+    """
+    l14_map = {r["Month"]: str(r["Line14_Final"]).strip() for _, r in final_emp_df.iterrows()}
+    out = {}
+    for idx, mname in enumerate(MONTHS, start=1):
+        code = l14_map.get(mname, "")
+        if code not in L15_REQUIRED_CODES:
+            out[mname] = ""
+            continue
+        amt = None
+        if pay_ded_df is not None and not pay_ded_df.empty:
+            rows = pay_ded_df[pay_ded_df["employeeid"].astype(str)==str(emp_id)]
+            for _, rr in rows.iterrows():
+                if _overlaps_month(rr.get("startdate"), rr.get("enddate"), year_used, idx):
+                    amt = rr.get("amount")
+                    if pd.notna(amt): break
+        out[mname] = _fmt_money(amt if pd.notna(amt) else 0.00)
+    uniq = {v for v in out.values() if v != ""}
+    out["ALL"] = list(uniq)[0] if len(uniq)==1 else ""
+    if out["ALL"]:
+        for mname in MONTHS: out[mname] = ""
+    return out
+
+def build_part3_people(emp_row: pd.Series,
+                       year_used: int,
+                       emp_enroll_df: pd.DataFrame,
+                       dep_enroll_df: pd.DataFrame) -> list:
+    """
+    Returns a list:
+    [{"first":..,"mi":..,"last":..,"ssn":..,"dob":..,"all12":bool,"months":{1,2,...}}, ...]
+    """
+    people = []
+
+    def months_from_periods(df, mask_col="isenrolled"):
+        months_cov = set()
+        if df is None or df.empty: return months_cov
+        mask = df[mask_col].fillna(True) if mask_col in df.columns else pd.Series(True, index=df.index)
+        for _, r in df[mask].iterrows():
+            s = r.get("enrollmentstartdate") or r.get("eligiblestartdate")
+            e = r.get("enrollmentenddate") or r.get("eligibleenddate")
+            s = pd.to_datetime(s, errors="coerce")
+            e = pd.to_datetime(e, errors="coerce")
+            if pd.isna(s) and pd.isna(e): continue
+            s = s if not pd.isna(s) else pd.Timestamp(year_used,1,1)
+            e = e if not pd.isna(e) else pd.Timestamp(year_used,12,31)
+            for m in range(1,13):
+                ms, me = month_bounds(year_used, m)
+                if (e.date() >= ms) and (s.date() <= me):
+                    months_cov.add(m)
+        return months_cov
+
+    # Employee line based on Emp Enrollment overlap
+    if emp_enroll_df is not None and not emp_enroll_df.empty:
+        subset = emp_enroll_df[emp_enroll_df["employeeid"].astype(str)==str(emp_row.get("employeeid"))]
+        emp_months = months_from_periods(subset)
+        if emp_months:
+            people.append({
+                "first": _coerce_str(emp_row.get("firstname")),
+                "mi":    "",
+                "last":  _coerce_str(emp_row.get("lastname")),
+                "ssn":   normalize_ssn_digits(_coerce_str(emp_row.get("ssn"))),
+                "dob":   "",
+                "all12": len(emp_months)==12,
+                "months": emp_months
+            })
+
+    # Dependents (optional; only if names exist)
+    if dep_enroll_df is not None and not dep_enroll_df.empty:
+        fn_col = next((c for c in dep_enroll_df.columns if c.lower() in {"firstname","first"}), None)
+        ln_col = next((c for c in dep_enroll_df.columns if c.lower() in {"lastname","last"}), None)
+        mi_col = next((c for c in dep_enroll_df.columns if c.lower() in {"mi","middle","middleinitial"}), None)
+        ssn_col= next((c for c in dep_enroll_df.columns if c.lower() in {"ssn","tin"}), None)
+        dob_col= next((c for c in dep_enroll_df.columns if c.lower() in {"dob","dateofbirth"}), None)
+
+        deps = dep_enroll_df[dep_enroll_df["employeeid"].astype(str)==str(emp_row.get("employeeid"))]
+        for _, r in deps.iterrows():
+            mset = months_from_periods(pd.DataFrame([r]))
+            if not mset: continue
+            first = _coerce_str(r.get(fn_col)) if fn_col else ""
+            last  = _coerce_str(r.get(ln_col)) if ln_col else ""
+            if not first and not last:
+                continue
+            people.append({
+                "first": first,
+                "mi":    _coerce_str(r.get(mi_col)) if mi_col else "",
+                "last":  last,
+                "ssn":   normalize_ssn_digits(_coerce_str(r.get(ssn_col))) if ssn_col else "",
+                "dob":   _coerce_str(pd.to_datetime(r.get(dob_col), errors="coerce").date()) if dob_col else "",
+                "all12": len(mset)==12,
+                "months": mset
+            })
+
+    return people
+
+def fill_pdf_for_employee(pdf_bytes: bytes,
+                          emp_row: pd.Series,
+                          final_df_emp: pd.DataFrame,
+                          year_used: int,
+                          pay_ded_df: pd.DataFrame = None,
+                          emp_enroll_df: pd.DataFrame = None,
+                          dep_enroll_df: pd.DataFrame = None):
     """Return (editable_filename, editable_bytes, flattened_filename, flattened_bytes)"""
     reader = PdfReader(io.BytesIO(pdf_bytes))
     page0 = reader.pages[0]
     W = float(page0.mediabox.width); H = float(page0.mediabox.height)
 
-    # ---- Part I values (from Emp Demographic) ----
+    # ---- Part I values
     first  = _coerce_str(emp_row.get("firstname"))
-    mi     = ""  # optional middle initial
+    mi     = ""
     last   = _coerce_str(emp_row.get("lastname"))
     ssn    = normalize_ssn_digits(_coerce_str(emp_row.get("ssn")))
     addr1  = _coerce_str(emp_row.get("addressline1"))
@@ -438,7 +594,7 @@ def fill_pdf_for_employee(pdf_bytes: bytes, emp_row: pd.Series, final_df_emp: pd
         "f1_8[0]": zipcode,
     }
 
-    # ---- Part II codes from Final table (Line 14 & Line 16) ----
+    # ---- Part II codes (Line 14 & 16)
     l14_by_m = {row["Month"]: _coerce_str(row["Line14_Final"]) for _,row in final_df_emp.iterrows()}
     l16_by_m = {row["Month"]: _coerce_str(row["Line16_Final"]) for _,row in final_df_emp.iterrows()}
 
@@ -449,7 +605,6 @@ def fill_pdf_for_employee(pdf_bytes: bytes, emp_row: pd.Series, final_df_emp: pd
 
     l14_all = all12_value(l14_by_m)
     l16_all = all12_value(l16_by_m)
-
     l14_values = [l14_all] + [l14_by_m.get(m,"") for m in MONTHS]
     l16_values = [l16_all] + [l16_by_m.get(m,"") for m in MONTHS]
 
@@ -457,27 +612,62 @@ def fill_pdf_for_employee(pdf_bytes: bytes, emp_row: pd.Series, final_df_emp: pd
     for name,val in zip(F_L14, l14_values): part2_map[name]=val
     for name,val in zip(F_L16, l16_values): part2_map[name]=val
 
-    mapping = {}
-    mapping.update(part1_map); mapping.update(part2_map)
+    # ---- NEW: Line 15 amounts
+    l15_map = {}
+    try:
+        l15_map = compute_l15_for_employee(
+            emp_id=_coerce_str(emp_row.get("employeeid")),
+            year_used=year_used,
+            final_emp_df=final_df_emp,
+            pay_ded_df=pay_ded_df if pay_ded_df is not None else pd.DataFrame()
+        )
+        l15_values = [l15_map.get("ALL","")] + [l15_map.get(m,"") for m in MONTHS]
+        for name, val in zip(F_L15, l15_values): part2_map[name] = val
+    except Exception:
+        # If your PDF uses different field names, this safely skips Line 15
+        pass
 
-    # ---- EDITABLE output (NeedAppearances + overlay burn-in on page 1) ----
+    # ---- NEW: Part III (Covered Individuals)
+    part3_map = {}
+    try:
+        people = build_part3_people(emp_row, year_used, emp_enroll_df, dep_enroll_df)
+        for idx, person in enumerate(people[:len(P3_NAME_ROWS)]):
+            nfields = P3_NAME_ROWS[idx]
+            tfields = {
+                nfields[0]: person["first"],
+                nfields[1]: person["mi"],
+                nfields[2]: person["last"],
+                nfields[3]: person["ssn"],
+                nfields[4]: person["dob"],
+            }
+            part3_map.update(tfields)
+            checks = P3_CHECK_ROWS[idx]
+            cvals = [person["all12"]] + [ (m in person["months"]) for m in range(1,13) ]
+            for nm, val in zip(checks, cvals):
+                part3_map[nm] = bool(val)
+    except Exception:
+        # If field IDs differ, skip quietly
+        pass
+
+    # ---- EDITABLE output
     writer_edit = PdfWriter()
     for i in range(len(reader.pages)):
         writer_edit.add_page(reader.pages[i])
 
     for i in range(len(writer_edit.pages)):
         try:
-            writer_edit.update_page_form_field_values(writer_edit.pages[i], mapping)
+            writer_edit.update_page_form_field_values(writer_edit.pages[i], {**part1_map, **part2_map, **part3_map})
         except Exception:
             pass
 
+    # NeedAppearances + text overlay on page 1 to ensure visibility
     root = writer_edit._root_object
     if "/AcroForm" not in root:
         root.update({NameObject("/AcroForm"): DictionaryObject()})
     root["/AcroForm"].update({NameObject("/NeedAppearances"): BooleanObject(True)})
 
-    rects = find_rects(reader, list(mapping.keys()), page_index=0)
-    overlay_pairs = [(rects[nm], mapping[nm]) for nm in mapping if nm in rects and mapping[nm]]
+    rects = find_rects(reader, list({**part1_map, **part2_map}.keys()), page_index=0)
+    overlay_pairs = [(rects[nm], (part1_map|part2_map)[nm]) for nm in (part1_map|part2_map) if nm in rects and (part1_map|part2_map)[nm]]
     if overlay_pairs:
         overlay_pdf = build_overlay(W, H, overlay_pairs)
         writer_edit.pages[0].merge_page(overlay_pdf.pages[0])
@@ -488,7 +678,7 @@ def fill_pdf_for_employee(pdf_bytes: bytes, emp_row: pd.Series, final_df_emp: pd
     writer_edit.write(editable_bytes)
     editable_bytes.seek(0)
 
-    # ---- FLATTENED output ----
+    # ---- FLATTENED output
     reader_after = PdfReader(io.BytesIO(editable_bytes.getvalue()))
     writer_flat = flatten_pdf(reader_after)
     flattened_name = f"1095c_filled_flattened_{first_last}_{year_used}.pdf"
@@ -515,6 +705,11 @@ excel_file = st.file_uploader("Upload ACA input workbook (.xlsx)", type=["xlsx"]
 interim_df = None
 final_df = None
 emp_demo_df = None
+emp_status_df = None
+emp_elig_df = None
+emp_enroll_df = None
+dep_enroll_df = None
+pay_ded_df = None
 year_used = None
 
 if excel_file is not None:
@@ -567,7 +762,7 @@ else:
         colA, colB = st.columns(2)
 
         with colA:
-            if st.button("Generate Single (Part I + Part II)", type="primary", use_container_width=True):
+            if st.button("Generate Single (Part I + II + L15 + Part III)", type="primary", use_container_width=True):
                 try:
                     emp_row = emp_demo_df[emp_demo_df["employeeid"].astype(str)==selected_emp].iloc[0]
                     final_emp = final_df[final_df["EmployeeID"].astype(str)==selected_emp].copy()
@@ -579,7 +774,10 @@ else:
                         final_emp = final_emp.sort_values("_ord").drop(columns=["_ord"])
 
                     editable_name, editable_bytes, flat_name, flat_bytes = fill_pdf_for_employee(
-                        pdf_file.getvalue(), emp_row, final_emp, year_used
+                        pdf_file.getvalue(), emp_row, final_emp, year_used,
+                        pay_ded_df=pay_ded_df,
+                        emp_enroll_df=emp_enroll_df,
+                        dep_enroll_df=dep_enroll_df
                     )
                     st.success("PDFs generated for selected employee.")
                     st.download_button("Download Editable PDF", editable_bytes.getvalue(), file_name=editable_name, mime="application/pdf")
@@ -610,7 +808,10 @@ else:
                                 final_emp = final_emp.sort_values("_ord").drop(columns=["_ord"])
 
                             editable_name, editable_bytes, flat_name, flat_bytes = fill_pdf_for_employee(
-                                pdf_file.getvalue(), emp_row, final_emp, year_used
+                                pdf_file.getvalue(), emp_row, final_emp, year_used,
+                                pay_ded_df=pay_ded_df,
+                                emp_enroll_df=emp_enroll_df,
+                                dep_enroll_df=dep_enroll_df
                             )
                             z.writestr(editable_name, editable_bytes.getvalue())
                             z.writestr(flat_name, flat_bytes.getvalue())
