@@ -1,6 +1,6 @@
 # app.py
 # ============================
-# ACA-1095 Builder — Streamlit App
+# ACA-1095 Builder — Streamlit App (with simple login)
 # ============================
 
 import io
@@ -15,12 +15,18 @@ from PyPDF2 import PdfReader, PdfWriter
 from PyPDF2.generic import NameObject, BooleanObject, DictionaryObject
 from reportlab.pdfgen import canvas
 
+# ----------------------------
+# Page config (must be the first Streamlit call)
+# ----------------------------
+st.set_page_config(page_title="ACA-1095 Builder", layout="wide")
+
 # =========================
 # Simple Login (no external libs)
 # =========================
 USERS = {
     "admin": "admin123",
-    "hr": "hrpass456"
+    "hr": "hrpass456",
+    # add more: "username": "password"
 }
 
 if "logged_in" not in st.session_state:
@@ -29,14 +35,14 @@ if "logged_in" not in st.session_state:
 
 def login_screen():
     st.title("🔐 ACA-1095 Builder - Login")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
+    u = st.text_input("Username")
+    p = st.text_input("Password", type="password")
     if st.button("Login"):
-        if username in USERS and USERS[username] == password:
+        if u in USERS and USERS[u] == p:
             st.session_state.logged_in = True
-            st.session_state.username = username
-            st.success(f"Welcome {username}!")
-            st.experimental_rerun()
+            st.session_state.username = u
+            st.success(f"Welcome {u}!")
+            st.rerun()
         else:
             st.error("Invalid username or password")
 
@@ -44,24 +50,17 @@ def logout_button():
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
         st.session_state.username = None
-        st.experimental_rerun()
+        st.rerun()
 
-# =========================
-# Entry Point
-# =========================
+# Gate the app
 if not st.session_state.logged_in:
     login_screen()
-    st.stop()   # prevent rest of the app from loading
-else:
-    st.sidebar.success(f"Logged in as {st.session_state.username}")
-    logout_button()
+    st.stop()
 
-    # ----------------------------
-    # Page config
-    # ----------------------------
-    st.set_page_config(page_title="ACA-1095 Builder", layout="wide")
-    st.title("ACA-1095 Builder")
-
+# After login
+st.sidebar.success(f"Logged in as {st.session_state.username}")
+logout_button()
+st.title("ACA-1095 Builder")
 
 # =========================
 # Utility helpers
@@ -440,7 +439,6 @@ def fill_pdf_for_employee(pdf_bytes: bytes, emp_row: pd.Series, final_df_emp: pd
     }
 
     # ---- Part II codes from Final table (Line 14 & Line 16) ----
-    # Build month -> code dicts
     l14_by_m = {row["Month"]: _coerce_str(row["Line14_Final"]) for _,row in final_df_emp.iterrows()}
     l16_by_m = {row["Month"]: _coerce_str(row["Line16_Final"]) for _,row in final_df_emp.iterrows()}
 
@@ -467,20 +465,17 @@ def fill_pdf_for_employee(pdf_bytes: bytes, emp_row: pd.Series, final_df_emp: pd
     for i in range(len(reader.pages)):
         writer_edit.add_page(reader.pages[i])
 
-    # Update values across pages (safe)
     for i in range(len(writer_edit.pages)):
         try:
             writer_edit.update_page_form_field_values(writer_edit.pages[i], mapping)
         except Exception:
             pass
 
-    # NeedAppearances
     root = writer_edit._root_object
     if "/AcroForm" not in root:
         root.update({NameObject("/AcroForm"): DictionaryObject()})
     root["/AcroForm"].update({NameObject("/NeedAppearances"): BooleanObject(True)})
 
-    # Overlay for visibility
     rects = find_rects(reader, list(mapping.keys()), page_index=0)
     overlay_pairs = [(rects[nm], mapping[nm]) for nm in mapping if nm in rects and mapping[nm]]
     if overlay_pairs:
@@ -566,7 +561,6 @@ if excel_file is None:
 elif pdf_file is None:
     st.info("Upload the blank 1095-C PDF to enable PDF generation.")
 else:
-    # Single employee
     if emp_demo_df is not None and not emp_demo_df.empty:
         all_ids = sorted(emp_demo_df["employeeid"].astype(str).unique().tolist())
         selected_emp = st.selectbox("Choose EmployeeID to generate a single 1095-C PDF:", all_ids, index=0 if all_ids else None)
@@ -593,7 +587,6 @@ else:
                 except Exception as e:
                     st.error(f"Failed to generate PDFs: {e}")
 
-        # Bulk
         with colB:
             st.write("Bulk generate for multiple employees")
             default_selection = all_ids if len(all_ids) <= 10 else all_ids[:10]
