@@ -9,12 +9,41 @@ import zipfile
 from datetime import datetime, date, timedelta
 
 import numpy as np
+import streamlit_authenticator as stauth
 import pandas as pd
 import streamlit as st
 from PyPDF2 import PdfReader, PdfWriter
 from PyPDF2.generic import NameObject, BooleanObject, DictionaryObject
 from reportlab.pdfgen import canvas
 
+names = ["Admin User", "HR Manager"]
+usernames = ["admin", "hr"]
+passwords = ["admin123", "hrpass456"]  # plain text for demo
+# Hash passwords
+hashed_passwords = stauth.Hasher(passwords).generate()
+
+# Create authenticator
+authenticator = stauth.Authenticate(
+    dict(zip(usernames, names)),
+    usernames,
+    hashed_passwords,
+    "aca1095_app",     # cookie name
+    "random_signature",# key for hashing
+    cookie_expiry_days=1
+)
+
+# Render login widget
+name, authentication_status, username = authenticator.login("Login", "main")
+
+if authentication_status == False:
+    st.error("Username/password is incorrect")
+
+if authentication_status == None:
+    st.warning("Please enter your username and password")
+
+if authentication_status:
+    st.sidebar.success(f"Welcome {name}")
+    authenticator.logout("Logout", "sidebar")
 # ----------------------------
 # Page config
 # ----------------------------
