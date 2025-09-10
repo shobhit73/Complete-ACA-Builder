@@ -9,46 +9,59 @@ import zipfile
 from datetime import datetime, date, timedelta
 
 import numpy as np
-import streamlit_authenticator as stauth
 import pandas as pd
 import streamlit as st
 from PyPDF2 import PdfReader, PdfWriter
 from PyPDF2.generic import NameObject, BooleanObject, DictionaryObject
 from reportlab.pdfgen import canvas
 
-names = ["Admin User", "HR Manager"]
-usernames = ["admin", "hr"]
-passwords = ["admin123", "hrpass456"]  # plain text for demo
-# Hash passwords
-hashed_passwords = stauth.Hasher(passwords).generate()
+# =========================
+# Simple Login (no external libs)
+# =========================
+USERS = {
+    "admin": "admin123",
+    "hr": "hrpass456"
+}
 
-# Create authenticator
-authenticator = stauth.Authenticate(
-    dict(zip(usernames, names)),
-    usernames,
-    hashed_passwords,
-    "aca1095_app",     # cookie name
-    "random_signature",# key for hashing
-    cookie_expiry_days=1
-)
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.username = None
 
-# Render login widget
-name, authentication_status, username = authenticator.login("Login", "main")
+def login_screen():
+    st.title("🔐 ACA-1095 Builder - Login")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    if st.button("Login"):
+        if username in USERS and USERS[username] == password:
+            st.session_state.logged_in = True
+            st.session_state.username = username
+            st.success(f"Welcome {username}!")
+            st.experimental_rerun()
+        else:
+            st.error("Invalid username or password")
 
-if authentication_status == False:
-    st.error("Username/password is incorrect")
+def logout_button():
+    if st.sidebar.button("Logout"):
+        st.session_state.logged_in = False
+        st.session_state.username = None
+        st.experimental_rerun()
 
-if authentication_status == None:
-    st.warning("Please enter your username and password")
+# =========================
+# Entry Point
+# =========================
+if not st.session_state.logged_in:
+    login_screen()
+    st.stop()   # prevent rest of the app from loading
+else:
+    st.sidebar.success(f"Logged in as {st.session_state.username}")
+    logout_button()
 
-if authentication_status:
-    st.sidebar.success(f"Welcome {name}")
-    authenticator.logout("Logout", "sidebar")
-# ----------------------------
-# Page config
-# ----------------------------
-st.set_page_config(page_title="ACA-1095 Builder", layout="wide")
-st.title("ACA-1095 Builder")
+    # ----------------------------
+    # Page config
+    # ----------------------------
+    st.set_page_config(page_title="ACA-1095 Builder", layout="wide")
+    st.title("ACA-1095 Builder")
+
 
 # =========================
 # Utility helpers
